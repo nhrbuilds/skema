@@ -1,0 +1,4 @@
+# Test binaries and profiling artifacts
+*.test
+*.prof
+*.out

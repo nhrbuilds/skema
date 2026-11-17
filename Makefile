@@ -1,0 +1,13 @@
+.PHONY: test vet bench fuzz
+
+test:
+	go test -race -v ./...
+
+vet:
+	go vet ./...
+
+bench:
+	go test -bench=. -benchmem ./tests/...
+
+fuzz:
+	go test -fuzz=FuzzDecodeJSONTrailing -fuzztime=30s ./tests/...
