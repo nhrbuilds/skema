@@ -3,6 +3,7 @@ package skema
 import (
 	"encoding/json"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -242,5 +243,68 @@ func parseIntUintRaw(ctx *parseContext, raw any, coerce bool) (uint64, bool) {
 	default:
 		failType(ctx, "integer")
 		return 0, false
+	}
+}
+
+// BigInt validates arbitrary-precision JSON integers into math/big.Int.
+// Without Coerce, only JSON number literals (and Go int/int64 values in
+// ParseAny trees) are accepted; with Coerce, digit strings too. Fractional
+// and exponential forms are rejected.
+type bigIntSchema struct {
+	*baseValidator[big.Int]
+	node   *schemaNode
+	coerce bool
+}
+
+// BigInt builds an arbitrary-precision integer validator.
+func BigInt() *bigIntSchema {
+	s := &bigIntSchema{node: &schemaNode{types: []string{"integer"}}}
+	s.baseValidator = bindValidator(s.node, s.parse)
+	return s
+}
+
+func (s *bigIntSchema) Coerce() *bigIntSchema                   { s.coerce = true; return s }
+func (s *bigIntSchema) Optional() Validator[*big.Int]           { return Optional(s) }
+func (s *bigIntSchema) Nullable() Validator[*big.Int]           { return Nullable(s) }
+func (s *bigIntSchema) OptionalNull() Validator[*big.Int]       { return OptionalNull(s) }
+func (s *bigIntSchema) Describe(text string) Validator[big.Int] { return Describe(s, text) }
+func (s *bigIntSchema) Refine(fn func(big.Int) bool, msg string) Validator[big.Int] {
+	return Refine(s, fn, msg)
+}
+
+func (s *bigIntSchema) parse(ctx *parseContext, raw any) (big.Int, error) {
+	var zero big.Int
+	switch v := raw.(type) {
+	case json.Number:
+		var n big.Int
+		if _, ok := n.SetString(v.String(), 10); !ok {
+			ctx.add(ctx.path, CodeInvalidType, "expected integer")
+			return zero, nil
+		}
+		return n, nil
+	case int:
+		return *big.NewInt(int64(v)), nil
+	case int64:
+		return *big.NewInt(v), nil
+	case float64:
+		if math.Trunc(v) != v {
+			ctx.add(ctx.path, CodeInvalidType, "expected integer")
+			return zero, nil
+		}
+		return *big.NewInt(int64(v)), nil
+	case string:
+		if !s.coerce {
+			failType(ctx, "integer")
+			return zero, nil
+		}
+		var n big.Int
+		if _, ok := n.SetString(strings.TrimSpace(v), 10); !ok {
+			ctx.add(ctx.path, CodeInvalidType, "expected integer")
+			return zero, nil
+		}
+		return n, nil
+	default:
+		failType(ctx, "integer")
+		return zero, nil
 	}
 }

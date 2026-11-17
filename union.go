@@ -6,6 +6,32 @@ type UnionVariant[T any] struct {
 	Schema Validator[T]
 }
 
+// Intersect validates the value against every schema, collecting all issues
+// (JSON Schema allOf semantics). All schemas must share the same target type.
+func Intersect[T any](schemas ...Validator[T]) Validator[T] {
+	if len(schemas) == 0 {
+		panic("skema.Intersect: at least one schema is required")
+	}
+	nodes := make([]*schemaNode, len(schemas))
+	for i, s := range schemas {
+		nodes[i] = s.schemaNode()
+	}
+	node := &schemaNode{allOf: nodes}
+	return wrapValidator[T](func(ctx *parseContext, raw any) (T, error) {
+		var out T
+		for i, s := range schemas {
+			v, err := s.parse(ctx, raw)
+			if err != nil {
+				continue
+			}
+			if i == 0 {
+				out = v
+			}
+		}
+		return out, nil
+	}, node)
+}
+
 // Union tries each variant in order and returns the first successful parse.
 // On failure it reports every variant's issues at the union's path. Wrap
 // differently-typed validators with Lift to build Union[any].

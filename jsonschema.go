@@ -209,6 +209,13 @@ func (c *schemaCompiler) compileNode(node *schemaNode) map[string]any {
 		}
 		m["anyOf"] = variants
 	}
+	if len(node.allOf) > 0 {
+		inter := make([]any, len(node.allOf))
+		for i, child := range node.allOf {
+			inter[i] = c.compileNode(child)
+		}
+		m["allOf"] = inter
+	}
 	if node.discriminator != nil {
 		if prop, ok := node.discriminator["propertyName"]; ok && prop != "" {
 			m["discriminator"] = map[string]any{"propertyName": prop}

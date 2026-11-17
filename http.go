@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -114,4 +115,43 @@ func writeHTTPError(w http.ResponseWriter, status int, code, message string, iss
 func DrainBody(r io.Reader) error {
 	_, err := io.Copy(io.Discard, r)
 	return err
+}
+
+// DecodeForm validates application/x-www-form-urlencoded form values (and
+// the query string) against the schema. Values arrive as strings — numeric
+// and bool fields need .Coerce(). Repeated keys arrive as []any. Multipart
+// forms are not covered; use DecodeHTTP for JSON bodies.
+func DecodeForm[T any](r *http.Request, schema Validator[T]) (T, error) {
+	var zero T
+	if err := r.ParseForm(); err != nil {
+		return zero, &HTTPError{Status: 400, Code: "invalid_form", Message: err.Error()}
+	}
+	return decodeURLValues(schema, r.Form)
+}
+
+// DecodeQuery validates URL query parameters against the schema (same string
+// semantics as DecodeForm).
+func DecodeQuery[T any](r *http.Request, schema Validator[T]) (T, error) {
+	return decodeURLValues(schema, r.URL.Query())
+}
+
+func decodeURLValues[T any](schema Validator[T], vals url.Values) (T, error) {
+	var zero T
+	m := make(map[string]any, len(vals))
+	for k, vs := range vals {
+		if len(vs) == 1 {
+			m[k] = vs[0]
+			continue
+		}
+		arr := make([]any, len(vs))
+		for i, v := range vs {
+			arr[i] = v
+		}
+		m[k] = arr
+	}
+	out, err := schema.ParseAny(m)
+	if err != nil {
+		return zero, err
+	}
+	return out, nil
 }

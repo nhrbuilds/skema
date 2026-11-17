@@ -24,18 +24,42 @@ Field names come from the `json` tag; untagged fields use snake_case, and `json:
 - `DecodeHTTP` + `WriteValidationError` (413/415/422, body-size limits, `errors.As` unwrapping)
 - `Lazy` + `$defs` / `$ref` for recursive schemas (`sync.Once`, race-safe, nested definitions materialize)
 - `DiscriminatedUnion` and non-discriminated `Union` (first-match, all variant issues on failure)
-- `Tuple` with positional validation and `Rest` for trailing items
-- `Time()` parsing into `time.Time` with `After`/`Before` bounds
+- `Intersect` (allOf) and `Tuple` with positional validation and `Rest` for trailing items
+- Dynamic objects: `Object(props, required...)` with `Strict`/`CatchAll`/`MinKeys` — no Go struct required
+- `Custom(fn)` — build your own validators on the same issue-reporting pipeline
+- `FromJSONSchema` — compile a JSON Schema document (2020-12 subset, fail-closed) into a validator
+- `FromStruct[T]` — generate schemas from `sk:"..."` struct tags (`FromStruct` docs below)
+- `Time()` parsing into `time.Time` with `After`/`Before` bounds, `BigInt` for arbitrary precision
 - Fixed-width numerics: `Int8`/`Int16`/`Int32`, `Uint`/`Uint8`/`Uint16`/`Uint32`/`Uint64`, `Float32`
+- Extra string formats: `UUIDv4/6/7`, `Base64`, `CIDR`, `JWT` (structural)
 - Record key validation: `Map().Keys(...)` / `KeyPattern(...)` (emitted as `propertyNames`)
 - `CatchAll` on structs (validates unknown keys, emitted as `additionalProperties`)
 - `Catch`, `Preprocess`, `Pipe`, `Any`/`Lift` adapters
+- Env + HTTP input helpers: `ParseEnv`/`ParseEnvMap`, `DecodeForm`/`DecodeQuery` alongside `DecodeHTTP`
 - Per-schema custom messages: `Message(v, "msg")` / `Messages(v, map[code]string)`
 - `SuperRefine` with `IssueCollector` for multi-issue cross-field rules
+- Error shaping: `ValidationError.Flatten()` / `.Prettify()`
 - Object surgery: `Pick`, `Omit`, `KeyOf`, `Partial`, `DeepPartial` (recurses into nested structs)
 - `WithLLMStrictMode()` for structured-output APIs
 - `Struct().Strict()` rejects unknown keys; `StripUnknown()` ignores them
 - Derivatives never mutate the schema they were built from
+
+## Struct tags
+
+```go
+type Signup struct {
+    Email    string  `json:"email" sk:"required,trim,lower,email"`
+    Age      int     `json:"age" sk:"coerce,min=18,max=120"`
+    Plan     string  `json:"plan" sk:"enum=free|pro|enterprise,default=free"`
+    Nickname *string `json:"nickname" sk:"optional,min=2,max=30"`
+}
+
+schema := sk.FromStruct[Signup]()
+```
+
+Nested struct fields need their schema registered: `sk.RegisterTagSchema(sk.FromStruct[Address]())`.
+For shapes tags can't express, build with `Struct`/`Field` — both styles compose.
+
 
 ## Null semantics
 
@@ -74,22 +98,22 @@ for i := range ve.Issues {
 
 ## What's intentionally not here
 
-`bigint`/`symbol`/`void`/`never` schemas, `z.function`/`z.promise`, branded types, and object `.extend` are static-type concerns Go's compiler already owns, or impossible without struct-type merging. Dates parse into `time.Time`; there is no string-only date *target* other than that.
+`bigint`/`symbol`/`void`/`never` schemas (use `BigInt` for arbitrary-precision integers), `z.function`/`z.promise`, branded types, and object `.extend` are static-type concerns Go's compiler already owns, or impossible without struct-type merging.
 
 ## How skema compares
 
 skema is Zod-*inspired*, not the first — [Zog](https://github.com/Oudwins/zog) is the most established Zod-like Go library and a great choice for forms/env/i18n-heavy validation. Feature comparison as documented at time of writing (Nov 2026):
 
-| Library | Style | JSON Schema out | LLM strict mode | HTTP helpers | Deps |
-|---|---|---|---|---|---|
-| **skema** | Zod-style | ✓ Draft 2020-12 | ✓ | ✓ JSON bodies (413/415/422) | 0 |
-| [Zog](https://github.com/Oudwins/zog) | Zod-inspired | — | — | forms & query params (`zhttp`) | 0 |
-| [gozod](https://github.com/kaptinlin/gozod) | Zod v4-inspired | ✓ Draft 2020-12 (+ import) | — | — | several |
-| [zod-go](https://github.com/aymaneallaoui/zod-go) | Zod-inspired | — | — | — | not stated |
-| [go-playground/validator](https://github.com/go-playground/validator) | struct tags | — | — | — | 0 |
-| [ozzo-validation](https://github.com/go-ozzo/ozzo-validation) | rules-based | — | — | — | 0 |
+| Library | Style | JSON Schema out | JSON Schema in | Struct tags | LLM strict mode | HTTP helpers | Deps |
+|---|---|---|---|---|---|---|---|
+| **skema** | Zod-style | ✓ Draft 2020-12 | ✓ `FromJSONSchema` | ✓ `FromStruct[T]` | ✓ | ✓ JSON bodies (413/415/422) + forms/query | 0 |
+| [Zog](https://github.com/Oudwins/zog) | Zod-inspired | — | — | — | — | forms & query params (`zhttp`) | 0 |
+| [gozod](https://github.com/kaptinlin/gozod) | Zod v4-inspired | ✓ Draft 2020-12 (+ import) | ✓ | ✓ | — | — | several |
+| [zod-go](https://github.com/aymaneallaoui/zod-go) | Zod-inspired | — | — | — | — | — | not stated |
+| [go-playground/validator](https://github.com/go-playground/validator) | struct tags | — | — | ✓ | — | — | 0 |
+| [ozzo-validation](https://github.com/go-ozzo/ozzo-validation) | rules-based | — | — | — | — | — | 0 |
 
-When to pick what: **Zog** for the most mature Zod-like API with i18n and env/form helpers; **gozod** if you want Zod v4 semantics, a two-way JSON Schema bridge, or struct-tag/codegen integration; **skema** if JSON Schema emission plus LLM structured-output strict mode, plain-struct fast-path parsing, or HTTP JSON-body validation with 422 semantics are on your critical path; **go-playground/validator** or **ozzo-validation** for ubiquitous struct-tag/rule-style validation.
+When to pick what: **Zog** for the most mature Zod-like API with i18n and env/form helpers; **gozod** if you want Zod v4 semantics or codegen-driven workflows; **skema** if LLM structured-output strict mode, JSON Schema emission + import, struct tags without codegen, or HTTP JSON/form validation with 422 semantics are on your critical path; **go-playground/validator** or **ozzo-validation** for ubiquitous struct-tag/rule-style validation.
 
 ## Performance
 

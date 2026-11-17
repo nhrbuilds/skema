@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.1.0 — 2026-11-18
+
+Zog/gozod parity release. Everything is additive; no breaking changes to the
+1.0.0 API.
+
+### Added
+
+- `Custom(fn)` — user-supplied validators on the same issue-reporting
+  pipeline (previously `Validator[T]` was unimplementable outside the
+  package).
+- `Intersect` — allOf semantics, all issues collected, emitted as
+  `allOf`.
+- `Object(props, required...)` — dynamic object schemas without a Go struct,
+  with `Strict`, `CatchAll` (validated unknown keys are copied to the output),
+  `MinKeys`/`MaxKeys`.
+- `FromJSONSchema` / `FromJSONSchemaBytes` — compile a JSON Schema document
+  (Draft 2020-12 subset: types, enum/const, string/number/array/object
+  keywords, oneOf/anyOf/allOf, internal $ref with $defs, cycle-safe) into a
+  validator. Fails closed on unsupported keywords.
+- `FromStruct[T]` — schema generation from `sk:"..."` struct tags (formats,
+  bounds, enum, literal, default, coerce, optional/nullable/required-pointer
+  semantics), with `RegisterTagSchema` for nested struct fields.
+- `ParseEnv` / `ParseEnvMap` — validate environ slices / maps against a
+  schema (Zog zenv parity).
+- `DecodeForm` / `DecodeQuery` — validate urlencoded forms and query params
+  (Zog zhttp parity; JSON bodies remain DecodeHTTP).
+- String formats: `UUIDv4`/`UUIDv6`/`UUIDv7` (version-nibble checks),
+  `Base64`, `CIDR`, `JWT` (structural).
+- `BigInt` — arbitrary-precision JSON integers into `math/big.Int`.
+- `Title` — JSON Schema title per node.
+- `ValidationError.Flatten()` / `.Prettify()` — error shaping for forms and
+  logs.
+
+### Fixed during development
+
+- `objectSchema.Strict`/`CatchAll` returned copies sharing the source's bound
+  parse closure, silently ignoring the derived flags.
+- JSON Schema import resolved `#/$defs/Name` to the wrong segment.
+
+### Quality gates
+
+- `go test -race ./...` green (36 → 49 tests), `go vet` and `gofmt` clean.
+- 30 s fuzz: ~99k execs, no crashers.
+- Benchmarks unchanged vs 1.0.0 (same allocation counts on existing paths).
+
 ## 1.0.0 — 2026-11-18
 
 Initial release: type-safe, fluent validation for Go with Zod-style

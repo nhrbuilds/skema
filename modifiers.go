@@ -232,3 +232,12 @@ func SuperRefine[T any](v Validator[T], fn func(T, *IssueCollector)) Validator[T
 		return out, nil
 	}, base)
 }
+
+// Title attaches a JSON Schema title to the node.
+func Title[T any](v Validator[T], text string) Validator[T] {
+	base := v.schemaNode().cloneShallow()
+	base.title = text
+	return wrapValidator[T](func(ctx *parseContext, raw any) (T, error) {
+		return v.parse(ctx, raw)
+	}, base)
+}

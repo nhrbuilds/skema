@@ -55,6 +55,7 @@ type schemaNode struct {
 	propertyNames  *schemaNode
 	oneOf          []*schemaNode
 	anyOf          []*schemaNode
+	allOf          []*schemaNode
 	ref            string
 	defName        string
 	resolveDef     func() *schemaNode

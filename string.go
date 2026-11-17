@@ -1,6 +1,8 @@
 package skema
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/mail"
 	"net/netip"
 	"net/url"
@@ -27,6 +29,10 @@ type stringSchema struct {
 	email    bool
 	asURL    bool
 	uuid     bool
+	uuidVer  int
+	base64   bool
+	cidr     bool
+	jwt      bool
 	dateTime bool
 	date     bool
 	ipv4     bool
@@ -86,7 +92,54 @@ func (s *stringSchema) URL() *stringSchema {
 }
 func (s *stringSchema) UUID() *stringSchema {
 	s.uuid = true
+	s.uuidVer = 0
 	s.node.format = "uuid"
+	return s
+}
+
+// UUIDv4 requires a version-4 (random) UUID.
+func (s *stringSchema) UUIDv4() *stringSchema {
+	s.uuid = true
+	s.uuidVer = 4
+	s.node.format = "uuid"
+	return s
+}
+
+// UUIDv6 requires a version-6 UUID.
+func (s *stringSchema) UUIDv6() *stringSchema {
+	s.uuid = true
+	s.uuidVer = 6
+	s.node.format = "uuid"
+	return s
+}
+
+// UUIDv7 requires a version-7 (time-ordered) UUID.
+func (s *stringSchema) UUIDv7() *stringSchema {
+	s.uuid = true
+	s.uuidVer = 7
+	s.node.format = "uuid"
+	return s
+}
+
+// Base64 requires standard (padded or raw) base64 content.
+func (s *stringSchema) Base64() *stringSchema {
+	s.base64 = true
+	s.node.format = "base64"
+	return s
+}
+
+// CIDR requires an IP prefix in CIDR notation (e.g. 10.0.0.0/8).
+func (s *stringSchema) CIDR() *stringSchema {
+	s.cidr = true
+	s.node.format = "cidr"
+	return s
+}
+
+// JWT requires a structurally valid JSON Web Token (three base64url
+// segments with JSON-object header and payload). No signature verification.
+func (s *stringSchema) JWT() *stringSchema {
+	s.jwt = true
+	s.node.format = "jwt"
 	return s
 }
 func (s *stringSchema) DateTime() *stringSchema {
@@ -167,6 +220,18 @@ func (s *stringSchema) parse(ctx *parseContext, raw any) (string, error) {
 	if s.uuid && !validUUID(str) {
 		ctx.add(ctx.path, CodeInvalidFormat, "invalid uuid")
 	}
+	if s.uuid && s.uuidVer > 0 && validUUID(str) && !uuidVersionIs(str, s.uuidVer) {
+		ctx.add(ctx.path, CodeInvalidFormat, "invalid uuid version")
+	}
+	if s.base64 && !validBase64(str) {
+		ctx.add(ctx.path, CodeInvalidFormat, "invalid base64")
+	}
+	if s.cidr && !validCIDR(str) {
+		ctx.add(ctx.path, CodeInvalidFormat, "invalid cidr")
+	}
+	if s.jwt && !validJWT(str) {
+		ctx.add(ctx.path, CodeInvalidFormat, "invalid jwt")
+	}
 	if s.dateTime && !validDateTime(str) {
 		ctx.add(ctx.path, CodeInvalidFormat, "invalid date-time")
 	}
@@ -208,6 +273,62 @@ func validURL(s string) bool {
 var uuidRe = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 func validUUID(s string) bool { return uuidRe.MatchString(s) }
+
+// uuidVersionIs checks the version nibble (third group's first hex char).
+func uuidVersionIs(s string, v int) bool {
+	if len(s) < 15 {
+		return false
+	}
+	b := s[14]
+	var n int
+	switch {
+	case b >= '0' && b <= '9':
+		n = int(b - '0')
+	case b >= 'a' && b <= 'f':
+		n = int(b-'a') + 10
+	case b >= 'A' && b <= 'F':
+		n = int(b-'A') + 10
+	default:
+		return false
+	}
+	return n == v
+}
+
+func validBase64(s string) bool {
+	if _, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return true
+	}
+	_, err := base64.RawStdEncoding.DecodeString(s)
+	return err == nil
+}
+
+func validCIDR(s string) bool {
+	_, err := netip.ParsePrefix(s)
+	return err == nil
+}
+
+func validJWT(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for i, p := range parts {
+		if p == "" {
+			return false
+		}
+		decoded, err := base64.RawURLEncoding.DecodeString(p)
+		if err != nil {
+			return false
+		}
+		if i < 2 {
+			var header map[string]any
+			if json.Unmarshal(decoded, &header) != nil {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 func validDateTime(s string) bool {
 	if _, err := time.Parse(time.RFC3339Nano, s); err == nil {

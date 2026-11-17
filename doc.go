@@ -32,8 +32,11 @@
 // 413/415/422 responses, and prefer ParseBytes/ParseString over ParseAny in
 // hot paths — struct schemas use a single-pass decode there.
 //
-// Beyond structs the package offers non-discriminated Union, positional
-// Tuple, record key validation, Time parsing into time.Time, fixed-width
-// integers (Int8..Uint64, Float32), Catch/Preprocess/Pipe combinators,
-// custom issue messages, and object surgery via Pick/Omit/KeyOf/DeepPartial.
+// Beyond structs the package offers non-discriminated Union, Intersect,
+// positional Tuple, dynamic Object schemas, record key validation, Time
+// parsing into time.Time, BigInt, fixed-width integers (Int8..Uint64,
+// Float32), Catch/Preprocess/Pipe combinators, custom validators, schema
+// generation from struct tags (FromStruct) and JSON Schema documents
+// (FromJSONSchema), custom issue messages, and object surgery via
+// Pick/Omit/KeyOf/DeepPartial.
 package skema
